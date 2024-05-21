@@ -1,0 +1,440 @@
+#Package Import
+
+import pandas as pd
+import numpy as np
+
+import os
+os.makedirs("/root/.kaggle/", exist_ok=True)
+os.rename("kaggle.json", "/root/.kaggle/kaggle.json")
+
+
+!chmod 600 /root/.kaggle/kaggle.json
+
+
+from kaggle.api.kaggle_api_extended import KaggleApi
+
+api = KaggleApi()
+api.authenticate()
+
+!kaggle datasets list -s "Amazon sales dataset"
+
+
+# !kaggle datasets download -d promptcloud/amazon_Sales_Dataset
+!kaggle datasets download -d pranshu9verma/amazon-sales-dataset
+
+
+import zipfile
+import os
+
+zip_file_path = '/content/amazon-sales-dataset.zip'
+
+extracted_dir_path = '/content/'
+
+with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+    zip_ref.extractall(extracted_dir_path)
+
+extracted_files = os.listdir(extracted_dir_path)
+
+
+df = pd.read_csv("/content/amazon.csv")
+df.head(5)
+
+#Vader and Textblob tool
+
+import pandas as pd
+import numpy as np
+from textblob import TextBlob
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+import nltk
+nltk.download('vader_lexicon')
+!pip install vaderSentiment
+
+
+df['TextBlob_Polarity'] = df['review_content'].apply(lambda x: TextBlob(x).sentiment.polarity)
+
+df['TextBlob_Polarity']
+
+sia = SentimentIntensityAnalyzer()
+df['Vader_Score'] = df['review_content'].apply(lambda x: sia.polarity_scores(x)['compound'])
+
+df['Vader_Score']
+
+for i, num in enumerate(df['Vader_Score']):
+    if num > 0 and num > 0.05:
+        df.loc[i, 'Vader_Score'] = 1
+    elif num > 0 and num < 0.05:
+        df.loc[i, 'Vader_Score'] = 0
+    else:
+        df.loc[i, 'Vader_Score'] = -1
+
+import pandas as pd
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+analyzer = SentimentIntensityAnalyzer()
+
+def categorize_sentiment(review):
+    score = analyzer.polarity_scores(review)
+    if score['compound'] >= 0.05:
+        return 'Positive'
+    elif score['compound'] <= -0.05:
+        return 'Negative'
+    else:
+        return 'Neutral'
+
+df['Sentiment_Category'] = df['review_content'].apply(categorize_sentiment)
+
+df.head(5)
+
+df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
+
+df['rating'] = df['rating'].astype(float).round(1)
+
+df.dropna(inplace=True)
+
+#Feature Selection
+
+X = df[["TextBlob_Polarity", "rating", "rating_count"]].values
+
+y = df['Vader_Score']
+
+#1)Naive_Bayes
+
+from sklearn.datasets import load_files
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score, classification_report
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# vectorizer = TfidfVectorizer()
+
+X
+
+from sklearn.preprocessing import StandardScaler
+
+scaler = StandardScaler()
+X = scaler.fit_transform(X)
+
+
+y = df['Vader_Score']
+
+y
+
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.2, random_state=42)
+
+X_train
+
+nb_classifier = MultinomialNB()
+
+from sklearn.preprocessing import MinMaxScaler
+
+scaler = MinMaxScaler()
+
+X_train = scaler.fit_transform(X_train)
+
+nb_classifier.fit(X_train, y_train)
+
+y_pred = nb_classifier.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+
+report = classification_report(y_test, y_pred)
+
+print("Classification Report:")
+print(report)
+
+#1)Hyperparameter of Naive Bayes
+
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, make_scorer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.model_selection import GridSearchCV
+
+param_grid = {
+    'alpha': [0.1, 1.0, 10.0],
+    'fit_prior': [True, False]
+}
+
+nb_classifier = MultinomialNB(alpha=10.0, fit_prior=True)
+
+scoring = {
+    'Accuracy': make_scorer(accuracy_score),
+    'Precision': make_scorer(precision_score, average='weighted'),
+    'Recall': make_scorer(recall_score, average='weighted'),
+    'F1-score': make_scorer(f1_score, average='weighted')
+}
+
+grid_search = GridSearchCV(
+    nb_classifier, param_grid, cv=StratifiedKFold(n_splits=5), scoring=scoring, refit='F1-score'
+)
+
+grid_search.fit(X_train, y_train)
+
+print("Best hyperparameters: ", grid_search.best_params_)
+print("Best F1-score: ", grid_search.best_score_)
+print("Best Accuracy: ", grid_search.cv_results_['mean_test_Accuracy'][grid_search.best_index_])
+print("Best Precision: ", grid_search.cv_results_['mean_test_Precision'][grid_search.best_index_])
+print("Best Recall: ", grid_search.cv_results_['mean_test_Recall'][grid_search.best_index_])
+
+#2)Support Vector Machine
+
+from sklearn.model_selection import train_test_split
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score
+from sklearn import svm
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+
+svm_classifier = SVC()
+
+svm_classifier.fit(X_train, y_train)
+
+
+y_pred = svm_classifier.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+
+report = classification_report(y_test, y_pred)
+
+print("Classification Report:")
+print(report)
+
+#2)Hyperparameter of SVM
+
+from sklearn.svm import SVC
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+param_grid = {
+    'C': [0.1, 1.0, 10.0],
+    'kernel': ['linear', 'rbf', 'poly'],
+    'degree': [2, 3, 4],
+    'gamma': ['scale', 'auto'],
+    'class_weight': [None, 'balanced']
+}
+
+from google.colab import userdata
+userdata.get('secretName')
+
+svm_classifier = SVC(C=0.1, class_weight= None, degree=2, gamma= 'scale',kernel= 'linear')
+
+
+grid_search = GridSearchCV(svm_classifier, param_grid, cv=5, scoring='f1_weighted', refit=True)
+
+grid_search.fit(X_train, y_train)
+
+y_pred = grid_search.predict(X_test)
+
+report = classification_report(y_test, y_pred)
+
+print("Best hyperparameters: ", grid_search.best_params_)
+
+print("Classification Report:\n", report)
+
+#3)Random Forest Classifier
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+rf_classifier = RandomForestClassifier()
+
+rf_classifier.fit(X_train, y_train)
+
+y_pred = rf_classifier.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+
+report = classification_report(y_test, y_pred)
+
+print("Classification Report:")
+print(report)
+
+#3)Hyperparameter of Random Forest Classifer
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.model_selection import GridSearchCV, train_test_split
+
+X_train, X_test, y_train, y_test = train_test_split(X,y, test_size=0.2, random_state=42)
+
+
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [10, 20, 30],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4],
+    'bootstrap': [True, False]
+}
+
+rf_classifier = RandomForestClassifier(random_state=42)
+
+grid_search = GridSearchCV(rf_classifier, param_grid, cv=5)
+
+grid_search.fit(X_train, y_train)
+
+y_pred = grid_search.predict(X_test)
+
+accuracy = accuracy_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred, average='weighted')
+recall = recall_score(y_test, y_pred, average='weighted')
+f1 = f1_score(y_test, y_pred, average='weighted')
+
+print("Best hyperparameters: ", grid_search.best_params_)
+print("Accuracy: ", accuracy)
+print("Precision: ", precision)
+print("Recall: ", recall)
+print("F1-score: ", f1)
+
+#4)RNN
+
+!pip install --upgrade tensorflow
+
+from keras.models import Sequential
+from keras.layers import Dense, Embedding, SimpleRNN
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from sklearn.model_selection import train_test_split
+
+tokenizer = Tokenizer()
+tokenizer.fit_on_texts(df['review_content'])
+vocab_size = len(tokenizer.word_index) + 1
+max_len = len(max(df['review_content'], key=len))
+Xx = tokenizer.texts_to_sequences(df['review_content'])
+Xx = pad_sequences(Xx, maxlen=max_len)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+embed_dim = 100
+hidden_dim = 32
+output_dim = 2
+num_epochs=5
+batch_size=32
+
+model = Sequential()
+model.add(Embedding(input_dim=vocab_size, output_dim=embed_dim, input_length=max_len))
+model.add(SimpleRNN(units=hidden_dim))
+model.add(Dense(units=1, activation='softmax'))
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+model.fit(X_train, y_train, epochs=num_epochs, batch_size=batch_size)
+
+loss, accuracy = model.evaluate(X_test, y_test)
+print("Test accuracy:", accuracy)
+
+report = classification_report(y_test, y_pred)
+
+print("Classification Report:")
+print(report)
+
+#5)CNN
+
+from keras.models import Sequential
+from keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout
+import tensorflow as tf
+
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+input_shape = (X_train.shape[1], 1)
+
+num_classes = 2
+num_filters = 32
+pool_size = 2
+kernel_size = 2
+num_epochs = 5
+hidden_dim = 32
+batch_size = 64
+
+model = Sequential()
+model.add(Conv1D(filters=num_filters, kernel_size=kernel_size, activation='relu', input_shape=input_shape))
+model.add(MaxPooling1D(pool_size=pool_size))
+model.add(Flatten())
+model.add(Dense(units=1, activation='relu'))
+model.add(Dropout(rate=0.5))
+model.add(Dense(units=1, activation='softmax'))
+
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+model.summary()
+
+model.fit(X_train, y_train, epochs=num_epochs, batch_size=batch_size)
+
+loss, accuracy = model.evaluate(X_test, y_test)
+print("Test accuracy:", accuracy)
+
+report = classification_report(y_test, y_pred)
+
+print("Classification Report:")
+print(report)
+
+#Performance Visualization
+
+import matplotlib.pyplot as plt
+
+import matplotlib.pyplot as plt
+
+metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+performance = {
+    'SVM': [0.95, 0.95, 1, 0.97],
+    'Random Forest': [0.96, 0.97, 1, 0.98],
+    'Naive Bayes': [0.93, 0.95, 0.97, 0.96],
+    'CNN': [0.96, 0.97, 1, 0.98],
+    'RNN': [0.96, 0.97, 1, 0.98]
+}
+
+fig, ax = plt.subplots()
+bar_width = 0.15
+x = [i for i in range(len(metrics))]
+
+for i, (alg, perf) in enumerate(performance.items()):
+    plt.bar([j + (bar_width * i) for j in x], perf, width=bar_width, label=alg)
+
+plt.xticks([j + bar_width * 2 for j in x], metrics)
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+plt.xlabel('Metrics')
+plt.ylabel('Performance')
+plt.title('Algorithm Performance Comparison')
+plt.tight_layout()
+plt.show()
+
+
+#Training and Validation loss
+
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import learning_curve
+
+clf = RandomForestClassifier(n_estimators=100, random_state=42)
+
+
+train_sizes, train_scores, val_scores = learning_curve(clf, X, y, train_sizes=np.linspace(0.1, 1.0, 10), cv=5, scoring='neg_mean_squared_error')
+
+train_mean = -np.mean(train_scores, axis=1)
+train_std = np.std(train_scores, axis=1)
+val_mean = -np.mean(val_scores, axis=1)
+val_std = np.std(val_scores, axis=1)
+
+plt.figure(figsize=(8, 6))
+plt.plot(train_sizes, train_mean, label='Training loss', color='blue')
+plt.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.1, color='blue')
+plt.plot(train_sizes, val_mean, label='Validation loss', color='red')
+plt.fill_between(train_sizes, val_mean - val_std, val_mean + val_std, alpha=0.1, color='red')
+plt.xlabel('Number of training samples')
+plt.ylabel('Loss')
+plt.title('Learning Curve')
+plt.legend(loc='best')
+plt.grid(True)
+plt.show()
